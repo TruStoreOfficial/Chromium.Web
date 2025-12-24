@@ -140,7 +140,7 @@
         .window-content { flex-grow: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
 
         /* --- TERMINAL --- */
-        .app-terminal { background: var(--term-bg); color: var(--term-text); font-family: 'Consolas', 'Monaco', monospace; padding: 12px; overflow-y: auto; flex-grow: 1; user-select: text; }
+        .app-terminal { background: var(--term-bg); color: var(--term-text); font-family: 'Consolas', 'Monaco', monospace; padding: 12px; overflow-y: auto; flex-grow: 1; user-select: text; cursor: text; }
         .term-history { white-space: pre-wrap; word-break: break-all; }
         .term-line { margin-bottom: 2px; font-size: 13px; line-height: 1.4; }
         .crosh-prompt { color: #fbbc04; font-weight: bold; }
@@ -214,9 +214,16 @@
     function openApp(appId) {
         if (windows[appId]) {
             const win = windows[appId].element;
-            if (win.classList.contains('minimized')) { win.classList.remove('minimized'); focusWindow(win); }
-            else if (parseInt(win.style.zIndex) < zIndexCounter) { focusWindow(win); }
-            else { win.classList.add('minimized'); }
+            if (win.classList.contains('minimized')) { 
+                win.classList.remove('minimized'); 
+                focusWindow(win); 
+            }
+            else if (parseInt(win.style.zIndex) < zIndexCounter) { 
+                focusWindow(win); 
+            }
+            else { 
+                win.classList.add('minimized'); 
+            }
             updateShelfState();
             return;
         }
@@ -249,6 +256,14 @@
         windows[appId] = { element: win };
         focusWindow(win);
         updateShelfState();
+        
+        // Final attempt to ensure terminal focuses after layout
+        if (appId === 'terminal') {
+            setTimeout(() => {
+                const input = win.querySelector('#term-input');
+                if(input) input.focus();
+            }, 100);
+        }
     }
 
     function setupWindowControls(win, appId) {
@@ -262,7 +277,8 @@
             if (e.target.closest('.win-btn')) return;
             isDragging = true;
             startX = e.clientX; startY = e.clientY;
-            startLeft = parseInt(win.style.left); startTop = parseInt(win.style.top);
+            startLeft = parseInt(win.style.left) || 0; 
+            startTop = parseInt(win.style.top) || 0;
         };
         window.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
@@ -272,7 +288,12 @@
         window.addEventListener('mouseup', () => isDragging = false);
     }
 
-    function focusWindow(win) { zIndexCounter++; win.style.zIndex = zIndexCounter; }
+    function focusWindow(win) { 
+        zIndexCounter++; 
+        win.style.zIndex = zIndexCounter; 
+        const input = win.querySelector('#term-input');
+        if (input) input.focus();
+    }
 
     function updateShelfState() {
         document.querySelectorAll('.shelf-icon').forEach(icon => {
@@ -297,7 +318,9 @@
         const history = win.querySelector('.term-history');
         const container = win.querySelector('.app-terminal');
 
-        container.onclick = () => input.focus();
+        container.addEventListener('click', () => {
+            input.focus();
+        });
 
         input.onkeydown = (e) => {
             if (e.key === 'Enter') {
@@ -324,6 +347,7 @@
                     historyIndex--;
                     input.value = commandHistory[historyIndex];
                 }
+                e.preventDefault();
             } else if (e.key === 'ArrowDown') {
                 if (historyIndex < commandHistory.length - 1) {
                     historyIndex++;
@@ -332,6 +356,7 @@
                     historyIndex = commandHistory.length;
                     input.value = '';
                 }
+                e.preventDefault();
             }
         };
     }
@@ -537,7 +562,12 @@
     }
     setInterval(updateClock, 1000);
     updateClock();
-    window.onload = () => openApp('terminal');
+
+    window.onload = () => {
+        openApp('terminal');
+        // Final focus check for hosted environments
+        window.focus();
+    };
 </script>
 </body>
 </html>
