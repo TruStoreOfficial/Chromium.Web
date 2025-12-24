@@ -139,6 +139,14 @@
 
         .window-content { flex-grow: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
 
+        /* --- TERMINAL --- */
+        .app-terminal { background: var(--term-bg); color: var(--term-text); font-family: 'Consolas', 'Monaco', monospace; padding: 12px; overflow-y: auto; flex-grow: 1; user-select: text; }
+        .term-history { white-space: pre-wrap; word-break: break-all; }
+        .term-line { margin-bottom: 2px; font-size: 13px; line-height: 1.4; }
+        .crosh-prompt { color: #fbbc04; font-weight: bold; }
+        .prompt-row { display: flex; align-items: center; gap: 8px; }
+        #term-input { background: transparent; border: none; color: inherit; font: inherit; outline: none; flex-grow: 1; padding: 0; }
+
         /* --- DIAGNOSTICS APP --- */
         .diag-container { padding: 24px; overflow-y: auto; height: 100%; color: #202124; }
         .diag-card { border: 1px solid #dadce0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -159,12 +167,6 @@
         .wallpaper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; }
         .wallpaper-thumb { height: 60px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; background-size: cover; }
         .wallpaper-thumb.selected { border-color: var(--accent); }
-
-        /* --- TERMINAL --- */
-        .app-terminal { background: var(--term-bg); color: var(--term-text); font-family: monospace; padding: 12px; overflow-y: auto; }
-        .term-line { margin-bottom: 3px; font-size: 13px; }
-        .crosh-prompt { color: #fbbc04; font-weight: bold; }
-        #term-input { background: transparent; border: none; color: inherit; font: inherit; outline: none; width: 100%; }
 
         /* --- SYSTEM TRAY --- */
         .system-tray { background: rgba(255, 255, 255, 0.1); padding: 4px 14px; border-radius: 20px; display: flex; align-items: center; gap: 12px; color: #fff; font-size: 12px; cursor: pointer; }
@@ -203,10 +205,11 @@
 </div>
 
 <script>
-    const systemStartTime = Date.now();
     let zIndexCounter = 100;
     const desktop = document.getElementById('desktop');
     const windows = {};
+    let commandHistory = [];
+    let historyIndex = -1;
 
     function openApp(appId) {
         if (windows[appId]) {
@@ -279,6 +282,186 @@
         });
     }
 
+    /* --- TERMINAL (CROSH) LOGIC --- */
+    function getTerminalTemplate() {
+        return `
+            <div class="title-bar"><div class="window-title">crosh</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
+            <div class="window-content app-terminal">
+                <div class="term-history">Welcome to crosh, the ChromeOS developer shell.<br>Type 'help' for a list of available commands.<br><br></div>
+                <div class="prompt-row"><span class="crosh-prompt">crosh&gt;</span><input type="text" id="term-input" spellcheck="false" autocomplete="off"></div>
+            </div>`;
+    }
+
+    function setupTerminal(win) {
+        const input = win.querySelector('#term-input');
+        const history = win.querySelector('.term-history');
+        const container = win.querySelector('.app-terminal');
+
+        container.onclick = () => input.focus();
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                const fullCmd = input.value.trim();
+                const parts = fullCmd.split(' ');
+                const cmd = parts[0].toLowerCase();
+                const args = parts.slice(1);
+
+                const outputLine = document.createElement('div');
+                outputLine.className = 'term-line';
+                outputLine.innerHTML = `<span class="crosh-prompt">crosh&gt;</span> ${input.value}`;
+                history.appendChild(outputLine);
+
+                if (fullCmd) {
+                    commandHistory.push(fullCmd);
+                    historyIndex = commandHistory.length;
+                    handleCroshCommand(cmd, args, history, win);
+                }
+                
+                input.value = '';
+                container.scrollTop = container.scrollHeight;
+            } else if (e.key === 'ArrowUp') {
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    input.value = commandHistory[historyIndex];
+                }
+            } else if (e.key === 'ArrowDown') {
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    input.value = commandHistory[historyIndex];
+                } else {
+                    historyIndex = commandHistory.length;
+                    input.value = '';
+                }
+            }
+        };
+    }
+
+    function handleCroshCommand(cmd, args, history, win) {
+        const out = (text) => {
+            const line = document.createElement('div');
+            line.className = 'term-line';
+            line.innerHTML = text;
+            history.appendChild(line);
+        };
+
+        if (!cmd) return;
+
+        switch(cmd) {
+            case 'help':
+                out('<b>Commands:</b>');
+                out('  help, ping, top, uname, clear, exit, battery_test, memory_test');
+                out('  uptime, whoami, date, echo [args], version, shell, vmc, network_diag');
+                out('  connectivity, storage, ls, pwd, dmesg, lscpu, free, reboot, poweroff');
+                out('  cowsay [text], weather, fortune, matrix');
+                break;
+            case 'ping':
+                out('PING google.com (142.250.190.46): 56 data bytes');
+                setTimeout(() => out('64 bytes from 142.250.190.46: icmp_seq=0 ttl=117 time=12.4 ms'), 300);
+                setTimeout(() => out('64 bytes from 142.250.190.46: icmp_seq=1 ttl=117 time=13.1 ms'), 600);
+                break;
+            case 'top':
+                out('Launching Diagnostics...');
+                openApp('diagnostics');
+                break;
+            case 'uname':
+                out('Linux chromeos 5.10.156-18956-g6e8e8e8e8 #1 SMP PREEMPT Wed Dec 24 12:00:00 UTC 2025 x86_64 GNU/Linux');
+                break;
+            case 'clear':
+                history.innerHTML = '';
+                break;
+            case 'exit':
+                win.querySelector('.btn-close').click();
+                break;
+            case 'echo':
+                out(args.join(' '));
+                break;
+            case 'date':
+                out(new Date().toString());
+                break;
+            case 'whoami':
+                out('chronos');
+                break;
+            case 'uptime':
+                out('up 14 hours, 23 minutes');
+                break;
+            case 'version':
+                out('Google ChromeOS: 120.0.6099.235 (Official Build) (64-bit)');
+                break;
+            case 'shell':
+                out('Error: This is a restricted environment. Shell access is disabled.');
+                break;
+            case 'battery_test':
+                out('Battery is charging (92%). Health: 98%');
+                break;
+            case 'memory_test':
+                out('Testing 4096MB of RAM...');
+                setTimeout(() => out('Memory test passed.'), 1000);
+                break;
+            case 'network_diag':
+                out('Testing eth0... [OK]');
+                out('Testing wlan0... [OK]');
+                out('Gateway: 192.168.1.1 [REACHABLE]');
+                break;
+            case 'connectivity':
+                out('Online: Yes');
+                out('Latency: 14ms');
+                break;
+            case 'storage':
+                out('Filesystem      Size  Used  Avail Use% Mounted on');
+                out('/dev/sda1        64G   12G    52G  19% /');
+                break;
+            case 'ls':
+                out('Downloads  MyFiles  crosh_logs  .ssh');
+                break;
+            case 'pwd':
+                out('/home/chronos/user');
+                break;
+            case 'lscpu':
+                out('Architecture:        x86_64');
+                out('CPU(s):              4');
+                out('Model name:          Intel(R) Core(TM) i5-1135G7 @ 2.40GHz');
+                break;
+            case 'free':
+                out('              total        used        free      shared  buff/cache   available');
+                out('Mem:        8192000     3456000     2134000      124000     2602000     4736000');
+                break;
+            case 'reboot':
+            case 'poweroff':
+                out('Broadcast message from chronos: System is going down for maintenance...');
+                setTimeout(() => location.reload(), 1500);
+                break;
+            case 'cowsay':
+                const msg = args.length ? args.join(' ') : 'Moo!';
+                out(' _______________________');
+                out(`&lt; ${msg} &gt;`);
+                out(' -----------------------');
+                out('        \\   ^__^');
+                out('         \\  (oo)\\_______');
+                out('            (__)\\       )\\/\\');
+                out('                ||----w |');
+                out('                ||     ||');
+                break;
+            case 'weather':
+                out('Weather for Mountain View, CA:');
+                out('☁️  Partly Cloudy, 68°F (20°C)');
+                break;
+            case 'fortune':
+                const fortunes = [
+                    "A dream you have will come true.",
+                    "You will find what you are looking for.",
+                    "The early bird gets the worm, but the second mouse gets the cheese.",
+                    "The journey of a thousand miles begins with a single step."
+                ];
+                out(fortunes[Math.floor(Math.random() * fortunes.length)]);
+                break;
+            case 'matrix':
+                out('<span style="color:#00ff00">01011001 01101111 01110101 00100000 01100110 01101111 01110101 01101110 01100100 00100000 01101001 01110100</span>');
+                break;
+            default:
+                out(`Unknown command: '${cmd}'`);
+        }
+    }
+
     /* --- DIAGNOSTICS LOGIC --- */
     function getDiagnosticsTemplate() {
         return `
@@ -329,22 +512,6 @@
     }
 
     /* --- OTHER APPS --- */
-    function getTerminalTemplate() {
-        return `<div class="title-bar"><div class="window-title">crosh</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
-            <div class="window-content app-terminal"><div class="term-history">Welcome to crosh.<br></div><div class="prompt-row"><span class="crosh-prompt">crosh&gt;</span>&nbsp;<input type="text" id="term-input" autofocus></div></div>`;
-    }
-    function setupTerminal(win) {
-        const input = win.querySelector('#term-input');
-        input.onkeydown = (e) => {
-            if (e.key === 'Enter') {
-                const line = document.createElement('div');
-                line.className = 'term-line';
-                line.innerHTML = `<span class="crosh-prompt">crosh&gt;</span> ${input.value}`;
-                win.querySelector('.term-history').appendChild(line);
-                input.value = '';
-            }
-        };
-    }
     function getSettingsTemplate() {
         return `<div class="title-bar"><div class="window-title">Settings</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
             <div class="window-content settings-layout"><div class="settings-sidebar"><div class="settings-item active">Personalization</div></div><div class="settings-body">
