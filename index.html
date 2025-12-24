@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ChromeOS Classic Desktop</title>
+    <meta name="theme-color" content="#202124">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --aura-gradient: linear-gradient(135deg, #3c4043 0%, #202124 100%);
+            --dark-gradient: linear-gradient(135deg, #202124 0%, #000000 100%);
+            --blue-gradient: linear-gradient(135deg, #2b32b2 0%, #1488cc 100%);
+            
+            --current-bg: var(--aura-gradient);
+            --shelf-bg: rgba(32, 33, 36, 0.85);
+            --window-bg: #f1f3f4;
+            --term-bg: #202124;
+            --term-text: #f1f3f4;
+            --accent: #1a73e8;
+            --header-height: 36px;
+            --shelf-height: 48px;
+            --success: #1e8e3e;
+        }
+
+        * { 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--current-bg);
+            background-attachment: fixed;
+            font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.5s ease;
+        }
+
+        #desktop {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            perspective: 1000px;
+        }
+
+        /* --- SHELF --- */
+        #shelf {
+            height: var(--shelf-height);
+            background: var(--shelf-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            gap: 8px;
+            backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            z-index: 10000;
+        }
+
+        .launcher-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .launcher-circle { width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; }
+
+        #taskbar-apps { display: flex; align-items: center; gap: 4px; flex-grow: 1; }
+
+        .shelf-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            position: relative;
+        }
+        .shelf-icon:hover { background: rgba(255,255,255,0.1); }
+        .shelf-icon.active::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            width: 16px;
+            height: 3px;
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .icon-img { width: 24px; height: 24px; pointer-events: none; }
+
+        /* --- WINDOWS --- */
+        .window {
+            position: absolute;
+            background: var(--window-bg);
+            border-radius: 4px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 280px;
+            min-height: 180px;
+            border: 1px solid rgba(0,0,0,0.15);
+            transition: opacity 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .window.minimized { opacity: 0; transform: scale(0.7) translateY(100px); pointer-events: none; }
+
+        .title-bar {
+            height: var(--header-height);
+            background: #dadce0;
+            display: flex;
+            align-items: center;
+            padding: 0 0 0 12px;
+            cursor: default;
+            flex-shrink: 0;
+        }
+        .title-bar.dark { background: #202124; color: #fff; }
+        .window-title { flex-grow: 1; font-size: 13px; font-weight: 500; }
+        .window-controls { display: flex; height: 100%; align-items: center; }
+        .win-btn { width: 36px; height: 100%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #5f6368; }
+        .title-bar.dark .win-btn { color: #bdc1c6; }
+        .win-btn:hover { background: rgba(0,0,0,0.1); }
+        .btn-close:hover { background: #d93025 !important; color: white !important; }
+
+        .window-content { flex-grow: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+
+        /* --- DIAGNOSTICS APP --- */
+        .diag-container { padding: 24px; overflow-y: auto; height: 100%; color: #202124; }
+        .diag-card { border: 1px solid #dadce0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .diag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .diag-label { font-size: 14px; font-weight: 500; color: #5f6368; }
+        .diag-value { font-size: 20px; font-weight: 400; }
+        .diag-bar-bg { height: 8px; background: #e8eaed; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+        .diag-bar-fill { height: 100%; background: var(--accent); transition: width 0.5s ease; }
+        .diag-test-btn { background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .diag-test-btn:disabled { background: #dadce0; cursor: default; }
+
+        /* --- SETTINGS APP --- */
+        .settings-layout { display: flex; height: 100%; }
+        .settings-sidebar { width: 180px; background: #f8f9fa; border-right: 1px solid #ddd; padding: 12px 0; }
+        .settings-item { padding: 10px 20px; font-size: 13px; cursor: pointer; color: #5f6368; }
+        .settings-item.active { color: var(--accent); background: #e8f0fe; font-weight: 500; border-left: 3px solid var(--accent); }
+        .settings-body { flex-grow: 1; padding: 24px; overflow-y: auto; }
+        .wallpaper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; }
+        .wallpaper-thumb { height: 60px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; background-size: cover; }
+        .wallpaper-thumb.selected { border-color: var(--accent); }
+
+        /* --- TERMINAL --- */
+        .app-terminal { background: var(--term-bg); color: var(--term-text); font-family: monospace; padding: 12px; overflow-y: auto; }
+        .term-line { margin-bottom: 3px; font-size: 13px; }
+        .crosh-prompt { color: #fbbc04; font-weight: bold; }
+        #term-input { background: transparent; border: none; color: inherit; font: inherit; outline: none; width: 100%; }
+
+        /* --- SYSTEM TRAY --- */
+        .system-tray { background: rgba(255, 255, 255, 0.1); padding: 4px 14px; border-radius: 20px; display: flex; align-items: center; gap: 12px; color: #fff; font-size: 12px; cursor: pointer; }
+
+        @media (max-width: 600px) {
+            .window { width: 95% !important; height: 80% !important; left: 2.5% !important; top: 5% !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="desktop"></div>
+
+<div id="shelf">
+    <div class="launcher-btn" title="Launcher"><div class="launcher-circle"></div></div>
+    <div id="taskbar-apps">
+        <div class="shelf-icon" id="shelf-terminal" onclick="openApp('terminal')" title="Terminal">
+            <svg class="icon-img" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" fill="#202124"/><path d="M7 9L11 12L7 15" stroke="#fbbc04" stroke-width="2"/><path d="M13 15H17" stroke="#fbbc04" stroke-width="2"/></svg>
+        </div>
+        <div class="shelf-icon" id="shelf-chromium" onclick="openApp('chromium')" title="Chromium">
+            <svg class="icon-img" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fff"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#4285f4" opacity=".2"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="#4285f4"/></svg>
+        </div>
+        <div class="shelf-icon" id="shelf-diagnostics" onclick="openApp('diagnostics')" title="Diagnostics">
+            <svg class="icon-img" viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="16" rx="2" fill="#34a853"/>
+                <path d="M6 12h3l2-5 2 10 2-5h3" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div class="shelf-icon" id="shelf-settings" onclick="openApp('settings')" title="Settings">
+            <svg class="icon-img" viewBox="0 0 24 24" fill="#5f6368"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+        </div>
+    </div>
+    <div class="system-tray">
+        <span id="clock">12:00</span>
+    </div>
+</div>
+
+<script>
+    const systemStartTime = Date.now();
+    let zIndexCounter = 100;
+    const desktop = document.getElementById('desktop');
+    const windows = {};
+
+    function openApp(appId) {
+        if (windows[appId]) {
+            const win = windows[appId].element;
+            if (win.classList.contains('minimized')) { win.classList.remove('minimized'); focusWindow(win); }
+            else if (parseInt(win.style.zIndex) < zIndexCounter) { focusWindow(win); }
+            else { win.classList.add('minimized'); }
+            updateShelfState();
+            return;
+        }
+
+        const win = document.createElement('div');
+        win.className = 'window';
+        win.id = `win-${appId}`;
+        const isMobile = window.innerWidth < 600;
+        win.style.width = isMobile ? '95%' : '640px';
+        win.style.height = isMobile ? '80%' : '480px';
+        win.style.left = isMobile ? '2.5%' : `${80 + (Object.keys(windows).length * 30)}px`;
+        win.style.top = isMobile ? '5%' : `${80 + (Object.keys(windows).length * 30)}px`;
+
+        if (appId === 'terminal') {
+            win.innerHTML = getTerminalTemplate();
+            win.querySelector('.title-bar').classList.add('dark');
+            setupTerminal(win);
+        } else if (appId === 'diagnostics') {
+            win.innerHTML = getDiagnosticsTemplate();
+            setupDiagnostics(win);
+        } else if (appId === 'settings') {
+            win.innerHTML = getSettingsTemplate();
+            setupSettings(win);
+        } else if (appId === 'chromium') {
+            win.innerHTML = getBrowserTemplate();
+        }
+
+        setupWindowControls(win, appId);
+        desktop.appendChild(win);
+        windows[appId] = { element: win };
+        focusWindow(win);
+        updateShelfState();
+    }
+
+    function setupWindowControls(win, appId) {
+        const titleBar = win.querySelector('.title-bar');
+        win.querySelector('.btn-close').onclick = () => { win.remove(); delete windows[appId]; updateShelfState(); };
+        win.querySelector('.btn-min').onclick = (e) => { e.stopPropagation(); win.classList.add('minimized'); updateShelfState(); };
+        win.onmousedown = () => focusWindow(win);
+        
+        let isDragging = false, startX, startY, startLeft, startTop;
+        titleBar.onmousedown = (e) => {
+            if (e.target.closest('.win-btn')) return;
+            isDragging = true;
+            startX = e.clientX; startY = e.clientY;
+            startLeft = parseInt(win.style.left); startTop = parseInt(win.style.top);
+        };
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            win.style.left = `${startLeft + (e.clientX - startX)}px`;
+            win.style.top = `${startTop + (e.clientY - startY)}px`;
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+    }
+
+    function focusWindow(win) { zIndexCounter++; win.style.zIndex = zIndexCounter; }
+
+    function updateShelfState() {
+        document.querySelectorAll('.shelf-icon').forEach(icon => {
+            const id = icon.id.replace('shelf-', '');
+            if (windows[id] && !windows[id].element.classList.contains('minimized')) icon.classList.add('active');
+            else icon.classList.remove('active');
+        });
+    }
+
+    /* --- DIAGNOSTICS LOGIC --- */
+    function getDiagnosticsTemplate() {
+        return `
+            <div class="title-bar"><div class="window-title">Diagnostics</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
+            <div class="window-content diag-container">
+                <div class="diag-card">
+                    <div class="diag-header"><span class="diag-label">CPU Usage</span><span id="cpu-val" class="diag-value">0%</span></div>
+                    <div class="diag-bar-bg"><div id="cpu-bar" class="diag-bar-fill" style="width:0%"></div></div>
+                </div>
+                <div class="diag-card">
+                    <div class="diag-header"><span class="diag-label">Memory Usage</span><span id="mem-val" class="diag-value">0.0 GB</span></div>
+                    <div class="diag-bar-bg"><div id="mem-bar" class="diag-bar-fill" style="width:0%"></div></div>
+                </div>
+                <div class="diag-card">
+                    <div class="diag-header"><span class="diag-label">Battery Health</span><button id="test-bat" class="diag-test-btn">Run Test</button></div>
+                    <p id="bat-status" style="font-size:13px; color:#5f6368">Status: Idle</p>
+                </div>
+            </div>`;
+    }
+
+    function setupDiagnostics(win) {
+        const cpuBar = win.querySelector('#cpu-bar');
+        const cpuVal = win.querySelector('#cpu-val');
+        const memBar = win.querySelector('#mem-bar');
+        const memVal = win.querySelector('#mem-val');
+        const testBtn = win.querySelector('#test-bat');
+        const status = win.querySelector('#bat-status');
+
+        const diagInterval = setInterval(() => {
+            if (!win.parentElement) { clearInterval(diagInterval); return; }
+            const c = Math.floor(Math.random() * 15) + 5;
+            const m = Math.floor(Math.random() * 10) + 30;
+            cpuBar.style.width = c + '%';
+            cpuVal.innerText = c + '%';
+            memBar.style.width = m + '%';
+            memVal.innerText = (4 * m / 100).toFixed(1) + ' GB';
+        }, 2000);
+
+        testBtn.onclick = () => {
+            testBtn.disabled = true;
+            status.innerText = "Status: Testing...";
+            setTimeout(() => {
+                status.innerText = "Status: Passed (Health 98%)";
+                status.style.color = "var(--success)";
+                testBtn.disabled = false;
+            }, 3000);
+        };
+    }
+
+    /* --- OTHER APPS --- */
+    function getTerminalTemplate() {
+        return `<div class="title-bar"><div class="window-title">crosh</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
+            <div class="window-content app-terminal"><div class="term-history">Welcome to crosh.<br></div><div class="prompt-row"><span class="crosh-prompt">crosh&gt;</span>&nbsp;<input type="text" id="term-input" autofocus></div></div>`;
+    }
+    function setupTerminal(win) {
+        const input = win.querySelector('#term-input');
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                const line = document.createElement('div');
+                line.className = 'term-line';
+                line.innerHTML = `<span class="crosh-prompt">crosh&gt;</span> ${input.value}`;
+                win.querySelector('.term-history').appendChild(line);
+                input.value = '';
+            }
+        };
+    }
+    function getSettingsTemplate() {
+        return `<div class="title-bar"><div class="window-title">Settings</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
+            <div class="window-content settings-layout"><div class="settings-sidebar"><div class="settings-item active">Personalization</div></div><div class="settings-body">
+                <div class="wallpaper-grid">
+                    <div class="wallpaper-thumb" data-theme="aura" style="background:var(--aura-gradient)"></div>
+                    <div class="wallpaper-thumb" data-theme="dark" style="background:var(--dark-gradient)"></div>
+                    <div class="wallpaper-thumb" data-theme="blue" style="background:var(--blue-gradient)"></div>
+                </div>
+            </div></div>`;
+    }
+    function setupSettings(win) {
+        win.querySelectorAll('.wallpaper-thumb').forEach(t => {
+            t.onclick = () => document.body.style.background = `var(--${t.dataset.theme}-gradient)`;
+        });
+    }
+    function getBrowserTemplate() {
+        return `<div class="title-bar"><div class="window-title">Chromium</div><div class="window-controls"><div class="win-btn btn-min">－</div><div class="win-btn btn-close">✕</div></div></div>
+            <div class="window-content"><iframe src="https://www.google.com/search?igu=1" style="width:100%;height:100%;border:none;"></iframe></div>`;
+    }
+
+    function updateClock() {
+        document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+    window.onload = () => openApp('terminal');
+</script>
+</body>
+</html>
